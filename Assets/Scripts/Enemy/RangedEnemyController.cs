@@ -66,15 +66,12 @@ public class RangedEnemyController : MonoBehaviour
 
         if (distanceToPlayer < minRange)
         {
-            // Too close, move away
             moveDirection = -directionToPlayer;
         }
         else if (distanceToPlayer > idealRange)
         {
-            // Too far, move closer
             moveDirection = directionToPlayer;
         }
-        // If in the sweet spot, don't move.
 
         rb.MovePosition(rb.position + moveDirection * enemyData.moveSpeed * Time.fixedDeltaTime);
     }
@@ -93,12 +90,16 @@ public class RangedEnemyController : MonoBehaviour
     {
         if (projectilePrefab == null || firePoint == null) return;
 
-        // Aim at the player
         Vector2 direction = (playerTarget.position - firePoint.position).normalized;
         float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg - 90f;
         firePoint.rotation = Quaternion.Euler(0, 0, angle);
 
-        // Instantiate the projectile
-        Instantiate(projectilePrefab, firePoint.position, firePoint.rotation);
+        GameObject projectileGO = Instantiate(projectilePrefab, firePoint.position, firePoint.rotation);
+
+        Projectile projectile = projectileGO.GetComponent<Projectile>();
+        if (projectile != null)
+        {
+            projectile.Initialize(enemyData.damage, enemyData.enemyName);
+        }
     }
 }

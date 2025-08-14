@@ -1,22 +1,16 @@
 using UnityEngine;
-using Unity.Netcode;
 
 /// <summary>
-/// Manages player stats and synchronizes critical values over the network.
+/// Manages player stats.
 /// </summary>
-public class PlayerStats : NetworkBehaviour
+public class PlayerStats : MonoBehaviour
 {
     [Tooltip("The base hero data asset. Used for initializing stats at the start of a run.")]
     public HeroData baseHeroData;
 
     // --- Core Combat Stats ---
-    // We use NetworkVariable for stats that need to be visible to all clients (e.g., for UI).
-    // The server has write permission, and clients have read permission by default.
-    public NetworkVariable<float> currentHealth = new NetworkVariable<float>();
-    public NetworkVariable<float> maxHealth = new NetworkVariable<float>();
-
-    // These stats are modified by cards. For now, we assume they are only relevant on the server
-    // where combat calculations happen, but they could be made NetworkVariables if needed.
+    public float currentHealth;
+    public float maxHealth;
     public float defense;
     public float moveSpeed;
 
@@ -34,13 +28,9 @@ public class PlayerStats : NetworkBehaviour
     public float luck = 0f;
     public float xpGainMultiplier = 1f;
 
-    public override void OnNetworkSpawn()
+    void Awake()
     {
-        // Initialization should only happen on the server, as it's the authority.
-        if (IsServer)
-        {
-            InitializeStats();
-        }
+        InitializeStats();
     }
 
     private void InitializeStats()
@@ -51,8 +41,8 @@ public class PlayerStats : NetworkBehaviour
             return;
         }
 
-        maxHealth.Value = baseHeroData.maxHealth;
-        currentHealth.Value = maxHealth.Value;
+        maxHealth = baseHeroData.maxHealth;
+        currentHealth = maxHealth;
         defense = baseHeroData.defense;
         moveSpeed = baseHeroData.moveSpeed;
         attackDamage = baseHeroData.attackDamage;
@@ -70,18 +60,16 @@ public class PlayerStats : NetworkBehaviour
 
     public void ModifyStat(string statKey, float value)
     {
-        // Stat modifications should only be processed on the server.
-        if (!IsServer) return;
-
+        // This logic now runs directly in single-player.
         switch (statKey)
         {
             case "maxHealth_add":
-                maxHealth.Value += value;
-                currentHealth.Value += value;
+                maxHealth += value;
+                currentHealth += value;
                 break;
             case "maxHealth_mult":
-                maxHealth.Value *= (1 + value);
-                currentHealth.Value *= (1 + value);
+                maxHealth *= (1 + value);
+                currentHealth *= (1 + value);
                 break;
             // ... other cases ...
             default:
@@ -90,16 +78,15 @@ public class PlayerStats : NetworkBehaviour
         }
     }
 
-    // Example of taking damage, which would be called by the server.
     public void TakeDamage(float amount)
     {
-        if (!IsServer) return;
-
-        currentHealth.Value -= amount;
-        if (currentHealth.Value <= 0)
+        currentHealth -= amount;
+        if (currentHealth <= 0)
         {
-            currentHealth.Value = 0;
+            currentHealth = 0;
             // Handle player death logic here...
+            Debug.Log("Player has died.");
+            Destroy(gameObject);
         }
     }
 }

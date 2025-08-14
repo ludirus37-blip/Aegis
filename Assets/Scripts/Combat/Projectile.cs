@@ -1,8 +1,7 @@
 using UnityEngine;
-using Unity.Netcode;
 
 [RequireComponent(typeof(Rigidbody2D))]
-public class Projectile : NetworkBehaviour
+public class Projectile : MonoBehaviour
 {
     [Tooltip("The forward speed of the projectile.")]
     public float speed = 15f;
@@ -11,7 +10,7 @@ public class Projectile : NetworkBehaviour
     public float lifetime = 3f;
 
     private float damage;
-    private string skillId; // To identify which skill fired this projectile
+    private string skillId;
     private Rigidbody2D rb;
 
     /// <summary>
@@ -36,25 +35,17 @@ public class Projectile : NetworkBehaviour
 
     void OnTriggerEnter2D(Collider2D other)
     {
-        // Damage logic should only execute on the server.
-        if (!IsServer) return;
-
         if (other.CompareTag("Enemy"))
         {
-            Health enemyHealth = other.GetComponent<Health>();
-            if (enemyHealth != null)
+            if (other.TryGetComponent<Health>(out var enemyHealth))
             {
                 enemyHealth.TakeDamage(damage);
 
-                // Record the damage dealt.
                 if (!string.IsNullOrEmpty(skillId))
                 {
                     DamageTracker.RecordDamage(skillId, damage);
                 }
             }
-
-            // Destroy the projectile on impact. This should also be handled on the server
-            // and synced to clients via NetworkObject.Destroy().
             Destroy(gameObject);
         }
     }
