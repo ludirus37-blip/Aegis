@@ -1,7 +1,8 @@
 using UnityEngine;
+using Unity.Netcode;
 
 [RequireComponent(typeof(Rigidbody2D))]
-public class Projectile : MonoBehaviour
+public class Projectile : NetworkBehaviour
 {
     [Tooltip("The forward speed of the projectile.")]
     public float speed = 15f;
@@ -10,15 +11,16 @@ public class Projectile : MonoBehaviour
     public float lifetime = 3f;
 
     private float damage;
+    private string skillId; // To identify which skill fired this projectile
     private Rigidbody2D rb;
 
     /// <summary>
-    /// Initializes the projectile with the damage it will deal.
+    /// Initializes the projectile with damage and the ID of the skill that fired it.
     /// </summary>
-    /// <param name="projectileDamage">The amount of damage.</param>
-    public void Initialize(float projectileDamage)
+    public void Initialize(float projectileDamage, string firingSkillId)
     {
         damage = projectileDamage;
+        skillId = firingSkillId;
     }
 
     void Awake()
@@ -28,30 +30,31 @@ public class Projectile : MonoBehaviour
 
     void Start()
     {
-        // Set the projectile's velocity. It moves "up" relative to its own orientation.
-        // This means it will fire in the direction it was spawned facing.
         rb.velocity = transform.up * speed;
-
-        // Destroy the projectile after its lifetime expires to prevent it from flying forever.
         Destroy(gameObject, lifetime);
     }
 
-    // This function is called when the Collider2D other enters the trigger.
-    // Ensure the projectile's collider is set to "Is Trigger".
     void OnTriggerEnter2D(Collider2D other)
     {
-        // For a prototype, checking tags is sufficient. In a larger project,
-        // using layers for collision matrix optimization is recommended.
+        // Damage logic should only execute on the server.
+        if (!IsServer) return;
+
         if (other.CompareTag("Enemy"))
         {
             Health enemyHealth = other.GetComponent<Health>();
             if (enemyHealth != null)
             {
                 enemyHealth.TakeDamage(damage);
+
+                // Record the damage dealt.
+                if (!string.IsNullOrEmpty(skillId))
+                {
+                    DamageTracker.RecordDamage(skillId, damage);
+                }
             }
 
-            // Destroy the projectile once it hits an enemy.
-            // Later, this could be replaced with an impact effect and object pooling.
+            // Destroy the projectile on impact. This should also be handled on the server
+            // and synced to clients via NetworkObject.Destroy().
             Destroy(gameObject);
         }
     }

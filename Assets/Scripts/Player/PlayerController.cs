@@ -1,10 +1,14 @@
 using UnityEngine;
+using Unity.Netcode;
 
+/// <summary>
+/// Handles player movement and ensures that only the owner of this object can control it.
+/// This script requires a NetworkObject component on the same GameObject.
+/// </summary>
 [RequireComponent(typeof(Rigidbody2D))]
-[RequireComponent(typeof(PlayerStats))] // Ensure the PlayerStats component is present.
-public class PlayerController : MonoBehaviour
+[RequireComponent(typeof(PlayerStats))]
+public class PlayerController : NetworkBehaviour
 {
-    // The PlayerStats component will now be the source for all runtime stats.
     private PlayerStats playerStats;
     private Rigidbody2D rb;
     private Vector2 moveInput;
@@ -15,7 +19,10 @@ public class PlayerController : MonoBehaviour
         playerStats = GetComponent<PlayerStats>();
     }
 
-    void Start()
+    /// <summary>
+    /// We override OnNetworkSpawn to safely get components after the network object is ready.
+    /// </summary>
+    public override void OnNetworkSpawn()
     {
         if (playerStats == null)
         {
@@ -26,6 +33,10 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
+        // This is the most important check for a NetworkBehaviour.
+        // We must ensure that only the client who owns this object can process input.
+        if (!IsOwner) return;
+
         // Input handling remains the same. This would be linked to a virtual joystick on mobile.
         moveInput.x = Input.GetAxisRaw("Horizontal");
         moveInput.y = Input.GetAxisRaw("Vertical");
@@ -33,8 +44,10 @@ public class PlayerController : MonoBehaviour
 
     void FixedUpdate()
     {
-        // Use the moveSpeed from PlayerStats, which can be modified by cards during the run.
-        // This makes the stat system dynamic.
+        // Movement logic should also only be executed by the owner.
+        // The position will be synced to other clients via the NetworkTransform component.
+        if (!IsOwner) return;
+
         if (playerStats != null)
         {
             rb.MovePosition(rb.position + moveInput.normalized * playerStats.moveSpeed * Time.fixedDeltaTime);

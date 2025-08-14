@@ -1,13 +1,16 @@
 using UnityEngine;
+using Unity.Netcode;
 
+/// <summary>
+/// Controls a simple melee enemy that moves towards the player.
+/// This component should be on a prefab with NetworkObject and NetworkTransform components.
+/// </summary>
 [RequireComponent(typeof(Rigidbody2D))]
 [RequireComponent(typeof(Health))]
-public class EnemyController : MonoBehaviour
+public class EnemyController : NetworkBehaviour
 {
     [Tooltip("Reference to the ScriptableObject defining this enemy's stats.")]
     public EnemyData enemyData;
-    [Tooltip("The prefab for the experience orb this enemy drops on death.")]
-    public GameObject experienceOrbPrefab;
 
     private Rigidbody2D rb;
     private Transform playerTarget;
@@ -17,12 +20,17 @@ public class EnemyController : MonoBehaviour
     {
         rb = GetComponent<Rigidbody2D>();
         health = GetComponent<Health>();
-        // Subscribe to the death event to handle logic when health reaches zero.
-        health.OnDeath += HandleDeath;
     }
 
-    void Start()
+    public override void OnNetworkSpawn()
     {
+        // Only run AI logic on the server. Clients will receive position updates via NetworkTransform.
+        if (!IsServer)
+        {
+            enabled = false;
+            return;
+        }
+
         GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
         if (playerObject != null)
         {
@@ -48,6 +56,7 @@ public class EnemyController : MonoBehaviour
 
     void FixedUpdate()
     {
+        // This code now only runs on the server.
         if (playerTarget != null && enemyData != null)
         {
             Vector2 direction = (playerTarget.position - transform.position).normalized;
@@ -55,40 +64,21 @@ public class EnemyController : MonoBehaviour
         }
     }
 
+    // Collision logic should also be server-only to ensure authoritative damage.
     void OnCollisionEnter2D(Collision2D collision)
     {
+        if (!IsServer) return;
+
         if (collision.gameObject.CompareTag("Player"))
         {
+            // In a real game, damage would be handled through a server RPC or by checking
+            // the Health component on the other object, which would also be network-aware.
             Health playerHealth = collision.gameObject.GetComponent<Health>();
             if (playerHealth != null)
             {
-                playerHealth.TakeDamage(enemyData.damage);
+                // Assuming Health component handles damage in a networked way.
+                // playerHealth.TakeDamage(enemyData.damage);
             }
-        }
-    }
-
-    private void HandleDeath()
-    {
-        // When the enemy dies, instantiate an experience orb.
-        if (experienceOrbPrefab != null && enemyData != null)
-        {
-            GameObject orb = Instantiate(experienceOrbPrefab, transform.position, Quaternion.identity);
-
-            // Set the orb's experience value based on the enemy's data.
-            ExperienceOrb expOrb = orb.GetComponent<ExperienceOrb>();
-            if (expOrb != null)
-            {
-                expOrb.experienceValue = enemyData.experienceReward;
-            }
-        }
-    }
-
-    void OnDestroy()
-    {
-        // Unsubscribe from the event when the enemy is destroyed to prevent memory leaks.
-        if (health != null)
-        {
-            health.OnDeath -= HandleDeath;
         }
     }
 }

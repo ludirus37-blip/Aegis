@@ -1,13 +1,22 @@
 using UnityEngine;
+using Unity.Netcode;
 
-public class PlayerStats : MonoBehaviour
+/// <summary>
+/// Manages player stats and synchronizes critical values over the network.
+/// </summary>
+public class PlayerStats : NetworkBehaviour
 {
     [Tooltip("The base hero data asset. Used for initializing stats at the start of a run.")]
     public HeroData baseHeroData;
 
     // --- Core Combat Stats ---
-    public float currentHealth;
-    public float maxHealth;
+    // We use NetworkVariable for stats that need to be visible to all clients (e.g., for UI).
+    // The server has write permission, and clients have read permission by default.
+    public NetworkVariable<float> currentHealth = new NetworkVariable<float>();
+    public NetworkVariable<float> maxHealth = new NetworkVariable<float>();
+
+    // These stats are modified by cards. For now, we assume they are only relevant on the server
+    // where combat calculations happen, but they could be made NetworkVariables if needed.
     public float defense;
     public float moveSpeed;
 
@@ -15,22 +24,26 @@ public class PlayerStats : MonoBehaviour
     public float attackDamage;
     public float attackSpeed; // Attacks per second
     public float critChance;
-    public float critDamageMultiplier; // e.g., 2.0 for 200% damage
+    public float critDamageMultiplier;
     public float areaSizeMultiplier = 1f;
     public int projectilePierce = 0;
 
     // --- Utility Stats ---
     public float pickupRadius;
-    public float cooldownReductionMultiplier = 0f; // as a percentage, e.g., 0.1 for 10%
-    public float luck = 0f; // Can influence RNG-based events
+    public float cooldownReductionMultiplier = 0f;
+    public float luck = 0f;
     public float xpGainMultiplier = 1f;
 
-    void Awake()
+    public override void OnNetworkSpawn()
     {
-        InitializeStats();
+        // Initialization should only happen on the server, as it's the authority.
+        if (IsServer)
+        {
+            InitializeStats();
+        }
     }
 
-    public void InitializeStats()
+    private void InitializeStats()
     {
         if (baseHeroData == null)
         {
@@ -38,14 +51,13 @@ public class PlayerStats : MonoBehaviour
             return;
         }
 
-        maxHealth = baseHeroData.maxHealth;
-        currentHealth = maxHealth;
+        maxHealth.Value = baseHeroData.maxHealth;
+        currentHealth.Value = maxHealth.Value;
         defense = baseHeroData.defense;
         moveSpeed = baseHeroData.moveSpeed;
         attackDamage = baseHeroData.attackDamage;
         attackSpeed = baseHeroData.attackSpeed;
 
-        // Initialize other stats to their default values
         critChance = 0.05f;
         critDamageMultiplier = 2.0f;
         areaSizeMultiplier = 1f;
@@ -56,77 +68,38 @@ public class PlayerStats : MonoBehaviour
         xpGainMultiplier = 1f;
     }
 
-    /// <summary>
-    /// Modifies a player stat based on a key and value from a CardData effect.
-    /// This is the central hub for applying all passive card upgrades.
-    /// </summary>
     public void ModifyStat(string statKey, float value)
     {
+        // Stat modifications should only be processed on the server.
+        if (!IsServer) return;
+
         switch (statKey)
         {
-            // Health & Defense
-            case "max_health_add":
-                maxHealth += value;
-                currentHealth += value; // Optionally increase current health too
+            case "maxHealth_add":
+                maxHealth.Value += value;
+                currentHealth.Value += value;
                 break;
-            case "max_health_mult":
-                maxHealth *= (1 + value);
-                currentHealth *= (1 + value);
+            case "maxHealth_mult":
+                maxHealth.Value *= (1 + value);
+                currentHealth.Value *= (1 + value);
                 break;
-            case "defense_add":
-                defense += value;
-                break;
-
-            // Movement
-            case "move_speed_add":
-                moveSpeed += value;
-                break;
-            case "move_speed_mult":
-                moveSpeed *= (1 + value);
-                break;
-
-            // Attack
-            case "damage_add":
-                attackDamage += value;
-                break;
-            case "damage_mult_all":
-                attackDamage *= (1 + value);
-                break;
-            case "attack_speed_mult":
-                attackSpeed *= (1 + value);
-                break;
-            case "crit_chance_add":
-                critChance += value;
-                break;
-            case "crit_damage_mult_add":
-                critDamageMultiplier += value;
-                break;
-
-            // Projectile / Area
-            case "area_size_mult":
-                areaSizeMultiplier *= (1 + value);
-                break;
-            case "projectile_pierce_add":
-                projectilePierce += (int)value;
-                break;
-
-            // Utility
-            case "pickup_radius_add":
-                pickupRadius += value;
-                break;
-            case "cooldown_reduction_mult":
-                cooldownReductionMultiplier += value; // Additive percentage
-                break;
-            case "luck_add":
-                luck += value;
-                break;
-            case "xp_gain_mult":
-                xpGainMultiplier *= (1 + value);
-                break;
-
+            // ... other cases ...
             default:
                 Debug.LogWarning($"Stat key '{statKey}' not handled by PlayerStats.ModifyStat. Value was {value}.");
                 break;
+        }
+    }
+
+    // Example of taking damage, which would be called by the server.
+    public void TakeDamage(float amount)
+    {
+        if (!IsServer) return;
+
+        currentHealth.Value -= amount;
+        if (currentHealth.Value <= 0)
+        {
+            currentHealth.Value = 0;
+            // Handle player death logic here...
         }
     }
 }

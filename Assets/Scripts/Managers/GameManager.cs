@@ -2,7 +2,6 @@ using UnityEngine;
 
 public class GameManager : MonoBehaviour
 {
-    // A simple singleton pattern to allow easy access from other scripts.
     public static GameManager Instance { get; private set; }
 
     [Tooltip("Assign the level-up UI panel here. It will be shown on level up.")]
@@ -12,38 +11,52 @@ public class GameManager : MonoBehaviour
 
     void Awake()
     {
-        // Enforce the singleton pattern.
         if (Instance != null && Instance != this)
         {
             Destroy(gameObject);
+            return;
         }
-        else
-        {
-            Instance = this;
-        }
+        Instance = this;
+        // Make the GameManager persistent across scenes if it's not already handled by a prefab loader.
+        DontDestroyOnLoad(gameObject);
     }
 
     void Start()
     {
-        // Find the player's LevelingSystem and subscribe to its OnLevelUp event.
-        GameObject player = GameObject.FindGameObjectWithTag("Player");
-        if (player != null)
-        {
-            playerLevelingSystem = player.GetComponent<LevelingSystem>();
-            if (playerLevelingSystem != null)
-            {
-                playerLevelingSystem.OnLevelUp += HandleLevelUp;
-            }
-        }
-        else
-        {
-            Debug.LogError("GameManager could not find Player. Make sure the player GameObject has the 'Player' tag.");
-        }
+        // Subscribe to events when this manager is first created.
+        SubscribeToPlayerEvents();
+    }
 
-        // Ensure the card selection UI is hidden at the start of the game.
-        if (cardSelectionUI != null)
+    private void OnEnable()
+    {
+        // Also subscribe when the object is re-enabled (e.g., after a scene load).
+        SubscribeToPlayerEvents();
+    }
+
+    private void OnDisable()
+    {
+        // Unsubscribe to prevent memory leaks when the object is disabled or destroyed.
+        if (playerLevelingSystem != null)
         {
-            cardSelectionUI.SetActive(false);
+            playerLevelingSystem.OnLevelUp -= HandleLevelUp;
+        }
+    }
+
+    private void SubscribeToPlayerEvents()
+    {
+        // Find the player's LevelingSystem and subscribe to its OnLevelUp event.
+        // This needs to be robust enough to handle scene loading.
+        if (playerLevelingSystem == null)
+        {
+            GameObject player = GameObject.FindGameObjectWithTag("Player");
+            if (player != null)
+            {
+                playerLevelingSystem = player.GetComponent<LevelingSystem>();
+                if (playerLevelingSystem != null)
+                {
+                    playerLevelingSystem.OnLevelUp += HandleLevelUp;
+                }
+            }
         }
     }
 
@@ -55,33 +68,41 @@ public class GameManager : MonoBehaviour
 
     public void PauseGameAndShowCardSelection()
     {
-        Time.timeScale = 0f; // This pauses all physics and frame-based updates.
+        Time.timeScale = 0f;
         if (cardSelectionUI != null)
         {
             cardSelectionUI.SetActive(true);
         }
-        else
-        {
-            Debug.LogWarning("Card Selection UI is not assigned in the GameManager inspector.");
-        }
     }
 
-    // This method would be called by a button on the card selection UI.
     public void ResumeGameAfterSelection()
     {
         if (cardSelectionUI != null)
         {
             cardSelectionUI.SetActive(false);
         }
-        Time.timeScale = 1f; // Resumes the game.
+        Time.timeScale = 1f;
     }
 
-    void OnDestroy()
+    /// <summary>
+    /// Placeholder for the end-of-run logic.
+    /// This would be called when the player dies or completes the level.
+    /// </summary>
+    /// <param name="goldCollectedThisRun">The amount of gold/currency gathered during the run.</param>
+    public void EndOfRun(int goldCollectedThisRun)
     {
-        // Always unsubscribe from events when the object is destroyed to prevent memory leaks.
-        if (playerLevelingSystem != null)
+        Debug.Log($"Run has ended. Awarding {goldCollectedThisRun} currency.");
+
+        // Use the CurrencyManager to add the collected gold to the player's persistent total.
+        if (CurrencyManager.Instance != null)
         {
-            playerLevelingSystem.OnLevelUp -= HandleLevelUp;
+            CurrencyManager.Instance.AddCurrency(goldCollectedThisRun);
+        }
+
+        // Load the main menu or a results screen.
+        if (SceneLoader.Instance != null)
+        {
+            SceneLoader.Instance.LoadScene("MainMenuScene");
         }
     }
 }
